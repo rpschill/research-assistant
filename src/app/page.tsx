@@ -1,65 +1,124 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useRef } from "react";
+import { CopilotChat } from "@copilotkit/react-ui";
+import { useDefaultTool } from "@copilotkit/react-core";
+import { Workspace } from "./components/Workspace";
+import { ResearchState, INITIAL_STATE, Todo } from "./types/research";
+import { ToolCard } from "./components/ToolCard";
+
+export default function Page() {
+  const [state, setState] = useState<ResearchState>(INITIAL_STATE);
+  const processedKeysRef = useRef<Set<string>>(new Set());
+
+  useDefaultTool({
+    render: (props) => {
+      const { name, status, args, result } = props;
+
+      // Prevent duplicate processing on re-renders
+      if (status === "complete") {
+        const resultStr = result ? JSON.stringify(result) : "";
+        const resultHash = resultStr ? `${resultStr.length}-${resultStr.slice(0, 100)}` : "";
+        const key = `${name}-${JSON.stringify(args)}-${resultHash}`;
+        if (processedKeysRef.current.has(key)) {
+          return <ToolCard {...props} />;
+        }
+        processedKeysRef.current.add(key);
+      }
+
+      // Handle research tool - track summary and sources
+      if (name === "research" && status === "complete" && result) {
+        const researchResult = result as { summary: string; sources: Array<{url: string, title: string, content?: string, status: "found" | "scraped" | "failed"}> };
+
+        // Track sources in state
+        if (researchResult.sources && researchResult.sources.length > 0) {
+          queueMicrotask(() => setState(prev => ({
+            ...prev,
+            sources: [...prev.sources, ...researchResult.sources]
+          })));
+        }
+
+        console.log(`[UI] Research completed: ${researchResult.sources?.length || 0} sources found`);
+      }
+
+      // Handle write_todos tool
+      if (name === "write_todos" && status === "complete" && args?.todos) {
+        const todosWithIds = (args.todos as Array<{ id?: string; content: string; status: string }>).map(
+          (todo, index) => ({
+            ...todo,
+            id: todo.id || `todo-${Date.now()}-${index}`,
+          })
+        );
+        queueMicrotask(() => setState(prev => ({ ...prev, todos: todosWithIds as Todo[] })));
+      }
+
+      // Handle write_file tool
+      // Deep Agents uses file_path (not path) as the parameter name
+      if (name === "write_file" && status === "complete" && args?.file_path) {
+        queueMicrotask(() => setState(prev => ({
+          ...prev,
+          files: [...prev.files, { path: args.file_path as string, content: args.content as string, createdAt: new Date().toISOString() }]
+        })));
+      }
+
+      return <ToolCard {...props} />;
+    },
+  });
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="relative min-h-screen">
+        {/* Animated background */}
+        <div className="abstract-bg">
+          <div className="blob-3" />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+        {/* Main content */}
+        <main className="relative z-10 h-screen flex overflow-hidden">
+          {/* Chat panel - left side (38%) */}
+          <div className="w-[38%] h-full border-r border-[var(--color-border-glass)] bg-[var(--color-glass-dark)] backdrop-blur-xl overflow-hidden">
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <header style={{ padding: 'var(--space-8)' }} className="border-b border-[var(--color-border-glass)]">
+                <h1
+                  style={{
+                    fontSize: 'var(--text-3xl)',
+                    fontWeight: 'var(--font-extrabold)',
+                    fontFamily: 'var(--font-display)',
+                    fontOpticalSizing: 'auto'
+                  }}
+                  className="text-gradient"
+                >
+                  Deep Research Assistant
+                </h1>
+                <p
+                  style={{
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--color-text-secondary)',
+                    marginTop: 'var(--space-1)'
+                  }}
+                >
+                  Ask me to research any topic
+                </p>
+              </header>
+
+              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 'var(--space-6)' }}>
+                <CopilotChat
+                  className="h-full"
+                  labels={{
+                    title: "Deep Research Assistant",
+                    initial: "What topic would you like me to research?",
+                    placeholder: "Ask me to research any topic...",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Workspace panel - right side (62%) */}
+          <div className="w-[62%] h-full overflow-hidden">
+            <Workspace state={state} />
+          </div>
+        </main>
     </div>
   );
 }
