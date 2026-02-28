@@ -1,0 +1,8 @@
+{
+  "python.venvPath": "C:\\Users\\rpsch\\dev\\research-assistant\\agent\\.venv",
+  "python.languageServer": "Default",
+  "editor.defaultFormatter": "anysphere.cursorpyright",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  }
+}
